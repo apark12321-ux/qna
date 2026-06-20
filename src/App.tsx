@@ -1,1 +1,1 @@
-export { default } from './AppFaq';
+export { default } from './AppMobile';
