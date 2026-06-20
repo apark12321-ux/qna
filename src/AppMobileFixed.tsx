@@ -45,7 +45,7 @@ export default function AppMobileFixed() {
   return (
     <div className="app-shell">
       <header className="top-area">
-        <h1>모든질문</h1>
+        <h1>생활정보 Q&A</h1>
         <label className="search-box">
           <Search size={18} aria-hidden="true" />
           <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="궁금한 내용을 입력하세요" />
