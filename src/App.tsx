@@ -1,1 +1,1 @@
-export { default } from './AppClean';
+export { default } from './AppFaq';
