@@ -1,377 +1,115 @@
-import React, { useState, useEffect } from 'react';
-import Header from './components/Header';
-import AdSlot from './components/AdSlot';
-import ArticleList from './components/ArticleList';
-import ArticleView from './components/ArticleView';
-import CustomQuestionForm from './components/CustomQuestionForm';
-import {
-  PrivacyPolicyView,
-  TermsOfServiceView,
-  DisclaimerView,
-  ContactUsView,
-} from './components/PolicyPages';
-import { SEED_ARTICLES, CATEGORIES } from './data';
-import { Article, CategoryId } from './types';
-import { Sparkles, X, ChevronRight, HelpCircle, ArrowUpRight, ShieldCheck, Flame, BookOpen } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { BookOpen, FileText, Loader2, Search, Sparkles, ThumbsUp } from 'lucide-react';
+
+type Category = '전체' | '건강' | '재정' | '생활 팁' | '기술' | '요리' | '의료' | '여행' | '교통' | '법률' | '과학';
+type Article = { id: string; question: string; title: string; summary: string; category: Category; body: string; createdAt: string; helpful: number; isMock?: boolean };
+
+const STORAGE_KEY = 'all-questions-qna:articles:v1';
+const categories: Category[] = ['전체', '건강', '재정', '생활 팁', '기술', '요리', '의료', '여행', '교통', '법률', '과학'];
+const samples = ['퇴직금은 정확히 어떤 기준으로 계산하나요?', '전세 계약 만료 전에 이사하면 보증금은 언제 돌려받나요?', '개인사업자 폐업 전에 꼭 확인해야 할 것은 무엇인가요?'];
+
+function makeId() { return `qna-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`; }
+function readSaved(): Article[] { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; } }
+function writeSaved(items: Article[]) { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); }
+function extractTitle(text: string, fallback: string) { return text.split('\n').find((line) => line.startsWith('# '))?.replace(/^#\s+/, '').slice(0, 90) || fallback; }
+function extractSummary(text: string, fallback: string) { return text.replace(/^# .+$/m, '').split('\n').map((line) => line.trim()).find((line) => line.length > 70 && !line.startsWith('#') && !line.startsWith('|'))?.replace(/\*\*/g, '').slice(0, 180) || fallback; }
+function quality(text: string) { return [text.length > 1200, (text.match(/^##\s+/gm) || []).length >= 3, text.includes('|'), /FAQ|자주 묻는 질문/.test(text), /공식|전문가|확인|최신/.test(text)].filter(Boolean).length * 20; }
+
+function Markdown({ text }: { text: string }) {
+  const lines = text.split('\n');
+  return <div className="article-body">{lines.map((line, i) => {
+    if (line.startsWith('# ')) return <h1 key={i}>{line.slice(2)}</h1>;
+    if (line.startsWith('## ')) return <h2 key={i}>{line.slice(3)}</h2>;
+    if (line.startsWith('### ')) return <h3 key={i}>{line.slice(4)}</h3>;
+    if (line.startsWith('|')) return <pre key={i}>{line}</pre>;
+    if (line.startsWith('- ')) return <p key={i} className="bullet">{line}</p>;
+    if (!line.trim()) return <div key={i} className="gap" />;
+    return <p key={i}>{line}</p>;
+  })}</div>;
+}
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<CategoryId | 'policy-privacy' | 'policy-terms' | 'policy-disclaimer' | 'contact-us' | 'home'>('home');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [articles, setArticles] = useState<Article[]>(SEED_ARTICLES);
-  const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
-  const [showBottomStickyAd, setShowBottomStickyAd] = useState(true);
-  const [adEarningsSim, setAdEarningsSim] = useState({ clicks: 45, cpm: 12.4, views: 1680 });
-  const [adsensePrepMode, setAdsensePrepMode] = useState(true); // 기본값 true (광고 숨김, 클린 신문 모드)
+  const [question, setQuestion] = useState('');
+  const [category, setCategory] = useState<Category>('생활 팁');
+  const [filter, setFilter] = useState<Category>('전체');
+  const [search, setSearch] = useState('');
+  const [items, setItems] = useState<Article[]>([]);
+  const [selectedId, setSelectedId] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [adPreview, setAdPreview] = useState(false);
 
-  // Reset selected article when category tab changes
-  useEffect(() => {
-    setSelectedArticle(null);
-  }, [activeTab]);
+  useEffect(() => setItems(readSaved()), []);
+  const selected = items.find((item) => item.id === selectedId);
+  const filtered = useMemo(() => items.filter((item) => (filter === '전체' || item.category === filter) && `${item.title} ${item.question} ${item.summary}`.toLowerCase().includes(search.toLowerCase())), [items, filter, search]);
 
-  const handleArticleGenerated = (newArticle: Article) => {
-    // Prefix article list with newly generated detailed paper
-    setArticles((prev) => [newArticle, ...prev]);
-    setSelectedArticle(newArticle);
-  };
+  async function generate(input = question) {
+    const text = input.trim();
+    if (text.length < 4 || loading) return;
+    setLoading(true);
+    try {
+      const res = await fetch('/api/generate-answer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: text, categoryName: category }) });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || '생성 실패');
+      const body = json.answer as string;
+      const article: Article = { id: makeId(), question: text, title: extractTitle(body, text), summary: extractSummary(body, text), category, body, createdAt: new Date().toISOString(), helpful: 0, isMock: json.isMock };
+      const next = [article, ...items].slice(0, 80);
+      setItems(next); writeSaved(next); setSelectedId(article.id); setQuestion('');
+    } catch (error: any) {
+      alert(error?.message || '생성 중 오류가 발생했습니다.');
+    } finally { setLoading(false); }
+  }
 
-  const handleVoteHelpful = (articleId: string, type: 'helpful' | 'unhelpful') => {
-    setArticles((prev) =>
-      prev.map((art) => {
-        if (art.id === articleId) {
-          return {
-            ...art,
-            helpfulCount: type === 'helpful' ? art.helpfulCount + 1 : art.helpfulCount,
-            unhelpfulCount: type === 'unhelpful' ? art.unhelpfulCount + 1 : art.unhelpfulCount,
-          };
-        }
-        return art;
-      })
-    );
-    // Simulate real clicks and earnings for visual reward state
-    setAdEarningsSim((prev) => ({
-      ...prev,
-      clicks: prev.clicks + 1,
-      views: prev.views + 45,
-    }));
-  };
+  function vote(id: string) {
+    const next = items.map((item) => item.id === id ? { ...item, helpful: item.helpful + 1 } : item);
+    setItems(next); writeSaved(next);
+  }
 
-  // Filter logic: Filter relative to active tab & searchQuery
-  const getFilteredArticles = () => {
-    let filtered = articles;
+  function copy(text: string) { navigator.clipboard?.writeText(text); }
 
-    // Filter by tab
-    if (activeTab !== 'home' && !activeTab.startsWith('policy-') && activeTab !== 'contact-us') {
-      filtered = filtered.filter((art) => art.categoryId === activeTab);
-    }
-
-    // Filter by text search
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        (art) =>
-          art.title.toLowerCase().includes(q) ||
-          art.summary.toLowerCase().includes(q) ||
-          art.content.toLowerCase().includes(q) ||
-          art.tags.some((t) => t.toLowerCase().includes(q))
-      );
-    }
-
-    return filtered;
-  };
-
-  const filteredArticles = getFilteredArticles();
-  
-  // Quick pick items for Homepage
-  const popularArticles = [...articles].sort((a, b) => b.views - a.views).slice(0, 3);
-  const activeCategoryDetail = CATEGORIES.find((c) => c.id === activeTab);
-
-  return (
-    <div id="app-container" className="min-h-screen bg-slate-50 flex flex-col font-sans antialiased text-slate-800">
-      
-      {/* Header element containing responsive search and tabbed navigation */}
-      <Header
-        activeCategory={activeTab}
-        onSelectCategory={setActiveTab}
-        searchQuery={searchQuery}
-        onSearchChange={(q) => {
-          setSearchQuery(q);
-          if (activeTab.startsWith('policy-') || activeTab === 'contact-us') {
-            setActiveTab('home'); // Snap to lists automatically when searching
-          }
-          setSelectedArticle(null);
-        }}
-      />
-
-      {/* AdSense Approval Assistant Banner - Helps user understand setup status and toggle live preview */}
-      <div className="bg-slate-900 border-b border-slate-800 text-slate-100 py-2.5 px-4 sm:px-6 lg:px-8 text-xs select-none">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2.5">
-          <div className="flex items-center gap-2 text-left">
-            <span className="flex h-2 w-2 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
-            <span className="font-bold text-emerald-400">구글 애드센스 승인 보장 최적화 모드 작동 중:</span>
-            <span className="text-slate-300">심사용 비승인 요인(빈 광고박스 검출)을 차단하고자 사이트 내 모든 임시 광고 영역을 숨긴 클린 정밀 레이아웃 상태입니다.</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-slate-400 text-[10px]">데모 광고 레이아웃 확인:</span>
-            <button
-              onClick={() => setAdsensePrepMode(!adsensePrepMode)}
-              className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                adsensePrepMode ? 'bg-slate-700' : 'bg-blue-600'
-              }`}
-              role="switch"
-              aria-checked={!adsensePrepMode}
-              title={adsensePrepMode ? "승인 전용 클린 레이아웃 활성화됨" : "가짜 광고 레이아웃 켜짐"}
-            >
-              <span
-                aria-hidden="true"
-                className={`pointer-events-none inline-block h-4 w-4 transform rounded-sm bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                  adsensePrepMode ? 'translate-x-0' : 'translate-x-5'
-                }`}
-              />
-            </button>
-            <span className="font-bold text-[10px] text-slate-300">
-              {adsensePrepMode ? '심사 모드 ON (광고 제거)' : '데모 광고 보이기'}
-            </span>
-          </div>
+  return <div className="min-h-screen">
+    <header className="hero">
+      <div className="badge"><Sparkles size={16} /> AI Q&A Knowledge Portal</div>
+      <h1>모든질문 QNA</h1>
+      <p>한국 생활형 질문을 검색 유입용 저장형 Q&A 칼럼으로 정리합니다. 공식 확인이 필요한 영역은 고지와 체크리스트를 함께 제공합니다.</p>
+      <div className="form-card">
+        <div className="row">
+          <select value={category} onChange={(e) => setCategory(e.target.value as Category)}>{categories.filter((c) => c !== '전체').map((c) => <option key={c}>{c}</option>)}</select>
+          <input value={question} onChange={(e) => setQuestion(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && generate()} placeholder="예: 전세 계약 만료 전에 이사하면 보증금은 언제 돌려받나요?" />
+          <button onClick={() => generate()} disabled={loading}>{loading ? <Loader2 className="spin" size={18} /> : '글 생성'}</button>
         </div>
+        <div className="samples">{samples.map((sample) => <button key={sample} onClick={() => generate(sample)}>{sample}</button>)}</div>
       </div>
+    </header>
 
-      {/* Main Grid Wrapper - Implements the Left Ad / Content / Right Ad layout from user's image */}
-      <main className="flex-grow py-6 px-4 sm:px-6 lg:px-8">
-        <div className={`max-w-7xl mx-auto ${adsensePrepMode ? 'max-w-4xl' : 'grid grid-cols-1 xl:grid-cols-12 gap-6 items-start'}`}>
-          
-          {/* LEFT WING: Wide skyscraper mock banner ad (hidden on mobile/tablet) */}
-          {!adsensePrepMode && (
-            <section className="hidden xl:block xl:col-span-2 sticky top-[150px]">
-              <div className="space-y-4">
-                <span className="block text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest">Left Wing Ad</span>
-                <AdSlot id="left-wing-1" type="skyscraper" category={activeTab as CategoryId} />
-              </div>
-            </section>
-          )}
+    <main className="layout">
+      <aside className="panel">
+        <div className="section-title"><Search size={18} /> 검색·필터</div>
+        <input className="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="검색어" />
+        <div className="chips">{categories.map((c) => <button className={filter === c ? 'active' : ''} key={c} onClick={() => setFilter(c)}>{c}</button>)}</div>
+        <label className="toggle"><input type="checkbox" checked={adPreview} onChange={(e) => setAdPreview(e.target.checked)} /> 광고 미리보기</label>
+        {adPreview && <div className="ad">AdSense Preview<br />콘텐츠 승인 전에는 빈 광고보다 클린 모드를 권장합니다.</div>}
+      </aside>
 
-          {/* CENTRE PANEL: Main content stream */}
-          <section className={`${adsensePrepMode ? 'w-full' : 'col-span-12 xl:col-span-8'} space-y-6`}>
-            
-            {/* Horizontal Leaderboard Ad slot on top of content to represent premium blog design */}
-            {!adsensePrepMode && (
-              <AdSlot id="header-leaderboard" type="leaderboard" category={activeTab as CategoryId} />
-            )}
+      <section className="content">
+        {selected ? <article className="article panel">
+          <button className="ghost" onClick={() => setSelectedId('')}>← 목록으로</button>
+          <div className="meta"><span>{selected.category}</span><span>{new Date(selected.createdAt).toLocaleString('ko-KR')}</span><span>품질 {quality(selected.body)}점</span>{selected.isMock && <span>Preview</span>}</div>
+          <Markdown text={selected.body} />
+          <div className="actions"><button onClick={() => vote(selected.id)}><ThumbsUp size={16} /> 도움됨 {selected.helpful}</button><button onClick={() => copy(selected.body)}>본문 복사</button></div>
+          <p className="notice">의료·법률·금융·세무·행정 정보는 실제 실행 전 공식 기관과 전문가 확인이 필요합니다.</p>
+        </article> : <div className="list">
+          <div className="section-title"><BookOpen size={18} /> 저장된 Q&A 칼럼</div>
+          {filtered.length === 0 && <div className="empty"><FileText size={32} /> 아직 생성된 글이 없습니다. 위 입력창에서 첫 질문을 생성해 보세요.</div>}
+          {filtered.map((item) => <button className="card" key={item.id} onClick={() => setSelectedId(item.id)}><div className="meta"><span>{item.category}</span><span>품질 {quality(item.body)}점</span></div><h2>{item.title}</h2><p>{item.summary}</p></button>)}
+        </div>}
+      </section>
 
-            {/* Render Category Introduction Title or Custom Question Form */}
-            {activeTab === 'home' && !selectedArticle && (
-              <CustomQuestionForm
-                activeCategory="tips"
-                onArticleGenerated={handleArticleGenerated}
-              />
-            )}
-
-            {/* Displaying specific Category Headers */}
-            {activeCategoryDetail && !selectedArticle && (
-              <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-2xl p-6 shadow-sm text-left">
-                <span className="text-xs font-bold uppercase tracking-wider bg-blue-900/60 text-blue-100 px-2.5 py-1 rounded">
-                  Q&A 디렉토리
-                </span>
-                <h2 className="text-lg sm:text-2xl font-bold mt-2 flex items-center gap-2">
-                  {activeCategoryDetail.name} 카테고리 해답 리스트
-                </h2>
-                <p className="text-xs sm:text-sm text-blue-100 mt-1 leading-relaxed">
-                  {activeCategoryDetail.description} 분야와 관련된 정제된 지식 자료입니다. 찾고 계시는 다른 질문이 있다면 위 검색창이나 홈 화면에서 직접 AI 해답을 생성할 수 있습니다.
-                </p>
-              </div>
-            )}
-
-            {/* MAIN APP ROUTER */}
-            <div className="transition-all duration-300">
-              {selectedArticle ? (
-                /* 1. ARTICLE DETAIL VIEW */
-                <ArticleView
-                  article={selectedArticle}
-                  onBack={() => {
-                    setSelectedArticle(null);
-                    // Increment preview views count locally on backing out to mimic authentic activity
-                    setArticles((prev) =>
-                      prev.map((art) => (art.id === selectedArticle.id ? { ...art, views: art.views + 1 } : art))
-                    );
-                  }}
-                  onVoteHelpful={handleVoteHelpful}
-                  adsensePrepMode={adsensePrepMode}
-                />
-              ) : activeTab === 'policy-privacy' ? (
-                /* 2. POLICY PAGES */
-                <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 md:p-10 shadow-sm text-left">
-                  <PrivacyPolicyView />
-                </div>
-              ) : activeTab === 'policy-terms' ? (
-                <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 md:p-10 shadow-sm text-left">
-                  <TermsOfServiceView />
-                </div>
-              ) : activeTab === 'policy-disclaimer' ? (
-                <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 md:p-10 shadow-sm text-left">
-                  <DisclaimerView />
-                </div>
-              ) : activeTab === 'contact-us' ? (
-                <div>
-                  <ContactUsView />
-                </div>
-              ) : (
-                /* 3. ARTICLES DIRECTORY GRID */
-                <div className="space-y-6">
-                  {/* Premium dashboard segment for Home Tab */}
-                  {activeTab === 'home' && !searchQuery && (
-                    <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm text-left">
-                      <h3 className="font-extrabold text-slate-900 text-sm sm:text-base border-b border-slate-100 pb-3 flex items-center justify-between">
-                        <span className="flex items-center gap-1.5">
-                          <Flame className="w-4 h-4 text-orange-500 shrink-0" />
-                          한국인 실시간 최다 조회 질문 TOP 3
-                        </span>
-                        <span className="text-[10px] text-gray-400 font-semibold uppercase">Real-Time Trending</span>
-                      </h3>
-                      <div className="divide-y divide-slate-100">
-                        {popularArticles.map((art, idx) => (
-                          <div
-                            key={art.id}
-                            onClick={() => setSelectedArticle(art)}
-                            className="py-3.5 flex items-center justify-between gap-4 cursor-pointer hover:bg-slate-50/50 rounded px-2 transition-colors group"
-                          >
-                            <div className="flex items-center gap-3 min-w-0">
-                              <span className="font-black text-blue-600 text-sm w-4 shrink-0">{idx + 1}</span>
-                              <p className="text-xs sm:text-sm text-slate-800 font-bold truncate group-hover:text-blue-700">
-                                {art.title}
-                              </p>
-                            </div>
-                            <span className="text-[10px] text-orange-600 bg-orange-50 font-extrabold px-2 py-0.5 rounded shrink-0">
-                              ★ {art.views}회 조회
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Filtered Listing with standard counts */}
-                  <div className="flex items-center justify-between text-xs text-slate-500 pb-1 px-1">
-                    <span>
-                      총 <strong>{filteredArticles.length}</strong>개의 지식 칼럼 정지
-                    </span>
-                    {searchQuery && (
-                      <span>
-                        검색 키워드: <strong>"{searchQuery}"</strong>
-                      </span>
-                    )}
-                  </div>
-
-                  <ArticleList
-                    articles={filteredArticles}
-                    onSelectArticle={setSelectedArticle}
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* Community AdSense Integration helper box in local panel to facilitate premium configuration */}
-            {!selectedArticle && (
-              <div className="p-4 bg-slate-900/5 text-slate-500 border border-dashed border-slate-200 rounded-2xl text-xs flex flex-col sm:flex-row items-center justify-between gap-3 text-left">
-                <div>
-                  <h4 className="font-bold text-slate-700 flex items-center gap-1">
-                    <ShieldCheck className="w-4 h-4 text-blue-600" /> Google AdSense 승인 대배 가구조 요건 충족
-                  </h4>
-                  <p className="text-[11px] text-slate-500 mt-1">
-                    본 사이트는 명확한 개인정보지침, 서비스수칙규약, 700자 이상의 정보 본론, 다이나믹 Q&A, 반응형 레이아웃 탑재 등의 애드센스 핵심 필수 조건을 100% 만족하도록 설계되었습니다.
-                  </p>
-                </div>
-                <div className="bg-white border border-slate-200 px-3 py-1.5 rounded-lg text-[10px] font-mono shrink-0">
-                  Status: 승인 즉각가능성 상위
-                </div>
-              </div>
-            )}
-
-            {/* Footer-area horizontal responsive Ad Banner */}
-            {!adsensePrepMode && (
-              <div className="mt-8">
-                <AdSlot id="footer-landscape-ad" type="native" category={activeTab as CategoryId} />
-              </div>
-            )}
-
-          </section>
-
-          {/* RIGHT WING: Wide skyscraper mock banner ad (hidden on mobile/tablet) */}
-          {!adsensePrepMode && (
-            <section className="hidden xl:block xl:col-span-2 sticky top-[150px]">
-              <div className="space-y-4">
-                <span className="block text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest">Right Wing Ad</span>
-                <AdSlot id="right-wing-1" type="skyscraper" category={activeTab as CategoryId} />
-              </div>
-            </section>
-          )}
-
-        </div>
-      </main>
-
-      {/* Website Footer Area */}
-      <footer className="bg-slate-900 text-slate-400 text-xs border-t border-slate-800 py-10 text-center select-none mt-12 pb-24">
-        <div className="max-w-7xl mx-auto px-4 space-y-6 sm:space-y-0 sm:flex sm:items-center sm:justify-between">
-          <div className="space-y-1.5 text-left">
-            <h4 className="font-bold text-white text-sm">모든질문 코리아 (K-QNA)</h4>
-            <p className="text-[11px]">한국에서 살아가는 현대인들을 위한 일상 정보 및 AI 실시간 칼럼 발행 플랫폼</p>
-            <p className="text-[10px] text-slate-500">© 2026 모든질문 코리아. All Rights Reserved. Powered by Antigravity AI Engine.</p>
-          </div>
-
-          <div className="flex flex-wrap gap-4 text-[11px]">
-            <button onClick={() => { setActiveTab('policy-privacy'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="hover:text-white transition-colors">
-              개인정보처리방침
-            </button>
-            <span>|</span>
-            <button onClick={() => { setActiveTab('policy-terms'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="hover:text-white transition-colors">
-              서비스 이용약관
-            </button>
-            <span>|</span>
-            <button onClick={() => { setActiveTab('policy-disclaimer'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="hover:text-white transition-colors">
-              면책고지
-            </button>
-            <span>|</span>
-            <button onClick={() => { setActiveTab('contact-us'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="hover:text-white transition-colors">
-              온라인 문의하기
-            </button>
-          </div>
-        </div>
-      </footer>
-
-      {/* BOTTOM STICKY MOCK BANNER AD - Very common high conversion AdSense widget */}
-      {!adsensePrepMode && showBottomStickyAd && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-sm border-t border-slate-800 shadow-xl py-2 px-4 transition-transform text-white">
-          <div className="max-w-6xl mx-auto flex items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-2 overflow-hidden truncate">
-              <span className="bg-red-500 text-white font-extrabold px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wide shrink-0 animate-pulse">
-                HOT AD
-              </span>
-              <p className="font-medium truncate text-slate-200">
-                [파이낸셜 추천] 미수령 세금 환급금 오늘 밤 일괄 만기 - 1인당 평균 수급 세정 36만 한도 즉시입금조회
-              </p>
-            </div>
-            <div className="flex items-center gap-3 shrink-0">
-              <a
-                href="https://gukmin-assit.gov.or.kr/intro"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-1.5 px-4 rounded-lg transform active:scale-95 transition-all text-[11px]"
-              >
-                조회하기
-              </a>
-              <button
-                onClick={() => setShowBottomStickyAd(false)}
-                className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white"
-                title="광고 닫기"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-    </div>
-  );
+      <aside className="panel policies">
+        <h3>운영 고지</h3>
+        <p>생성형 AI 답변은 정보 탐색 보조용입니다. 확정 판단, 계약, 치료, 투자, 세무 신고는 공식 자료를 기준으로 검토하십시오.</p>
+        <h3>문의</h3>
+        <p>운영자 정보와 연락처는 배포 전 실제 서비스 기준으로 수정하십시오.</p>
+      </aside>
+    </main>
+  </div>;
 }

@@ -1,20 +1,38 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# 모든질문 QNA
 
-# Run and deploy your AI Studio app
+한국 생활형 질문을 저장형 Q&A 칼럼으로 정리하는 React + Express 기반 MVP입니다.
 
-This contains everything you need to run your app locally.
+## 기능
 
-View your app in AI Studio: https://ai.studio/apps/6f79aa28-98cc-417f-b084-1330c6a8bd53
+- 질문 입력 후 Q&A 칼럼 생성
+- Gemini API 키가 없을 때도 미리보기 글 생성
+- 생성 글 브라우저 localStorage 저장
+- 카테고리·검색 필터
+- 상세 보기, 도움됨 투표, 복사
+- robots.txt, sitemap.xml, rss.xml 제공
+- 개인정보처리방침, 이용약관, 면책고지, 문의 영역 포함
 
-## Run Locally
+## 실행
 
-**Prerequisites:**  Node.js
+```bash
+npm install
+cp .env.example .env.local
+npm run dev
+```
 
+## 빌드
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+```bash
+npm run lint
+npm run build
+npm start
+```
+
+## 환경 변수
+
+```bash
+GEMINI_API_KEY="..."
+GEMINI_MODEL="gemini-2.5-flash"
+APP_URL="https://your-domain.com"
+PORT="3000"
+```

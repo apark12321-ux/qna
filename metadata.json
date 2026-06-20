@@ -1,6 +1,6 @@
 {
   "name": "모든질문 QNA",
-  "description": "한국에서 살아가는 사람들을 위한 세상의 모든 질문과 명쾌한 해답을 제공하는 지식 정보 포털",
+  "description": "한국 생활형 질문을 저장형 Q&A 칼럼으로 정리하는 AI 지식 포털",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
