@@ -41,7 +41,7 @@ button {
   position: sticky;
   top: 0;
   z-index: 30;
-  padding: 22px 0 14px;
+  padding: 18px 0 14px;
   background: rgba(246, 247, 249, 0.98);
   backdrop-filter: blur(14px);
   border-bottom: 1px solid #e5e7eb;
@@ -49,10 +49,10 @@ button {
 
 .top-area h1 {
   margin: 0 0 14px;
-  font-size: clamp(30px, 7vw, 42px);
-  line-height: 1;
-  font-weight: 950;
-  letter-spacing: -0.065em;
+  font-size: clamp(26px, 5.6vw, 34px);
+  line-height: 1.08;
+  font-weight: 900;
+  letter-spacing: -0.045em;
 }
 
 .search-box {
@@ -229,7 +229,7 @@ button {
   }
 
   .top-area {
-    padding-top: 28px;
+    padding-top: 24px;
   }
 
   .question-list {
