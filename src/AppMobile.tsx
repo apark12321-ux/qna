@@ -4,7 +4,7 @@ import { faqCategories, seedFaqArticles, type FaqCategory } from './data/faqSeed
 
 type Filter = '전체' | FaqCategory;
 const filters: Filter[] = ['전체', ...faqCategories];
-const HOME_PER_CATEGORY = 2;
+const HOME_PER_CATEGORY = 1;
 const MAX_RESULTS = 24;
 
 function BodyText({ text }: { text: string }) {
@@ -37,7 +37,7 @@ export default function AppMobile() {
     return source
       .filter((item) => {
         const categoryOk = filter === '전체' || item.category === filter;
-        const text = `${item.title} ${item.summary} ${item.category}`.toLowerCase();
+        const text = `${item.title} ${item.summary} ${item.category} ${item.body}`.toLowerCase();
         return categoryOk && (!keyword || text.includes(keyword));
       })
       .slice(0, MAX_RESULTS);
