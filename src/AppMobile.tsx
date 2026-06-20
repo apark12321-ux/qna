@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, Search } from 'lucide-react';
-import { faqCategories, seedFaqArticles, seedFaqTotal, type FaqCategory } from './data/faqSeed';
+import { faqCategories, seedFaqArticles, type FaqCategory } from './data/faqSeed';
 
 type Filter = '전체' | FaqCategory;
 const filters: Filter[] = ['전체', ...faqCategories];
-const PAGE_SIZE = 30;
+const HOME_PER_CATEGORY = 2;
+const MAX_RESULTS = 24;
 
 function BodyText({ text }: { text: string }) {
   return (
@@ -20,77 +21,73 @@ function BodyText({ text }: { text: string }) {
   );
 }
 
+function pickHomeItems() {
+  return faqCategories.flatMap((category) => seedFaqArticles.filter((item) => item.category === category).slice(0, HOME_PER_CATEGORY));
+}
+
 export default function AppMobile() {
   const [filter, setFilter] = useState<Filter>('전체');
   const [search, setSearch] = useState('');
-  const [openId, setOpenId] = useState(seedFaqArticles[0]?.id || '');
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [openId, setOpenId] = useState('');
 
-  const filtered = useMemo(() => {
+  const items = useMemo(() => {
     const keyword = search.trim().toLowerCase();
-    return seedFaqArticles.filter((item) => {
-      const categoryOk = filter === '전체' || item.category === filter;
-      const text = `${item.title} ${item.summary} ${item.category}`.toLowerCase();
-      return categoryOk && (!keyword || text.includes(keyword));
-    });
+    const source = keyword || filter !== '전체' ? seedFaqArticles : pickHomeItems();
+
+    return source
+      .filter((item) => {
+        const categoryOk = filter === '전체' || item.category === filter;
+        const text = `${item.title} ${item.summary} ${item.category}`.toLowerCase();
+        return categoryOk && (!keyword || text.includes(keyword));
+      })
+      .slice(0, MAX_RESULTS);
   }, [filter, search]);
 
-  const visible = filtered.slice(0, visibleCount);
-
   useEffect(() => {
-    setVisibleCount(PAGE_SIZE);
-    setOpenId(filtered[0]?.id || '');
-  }, [filter, search, filtered]);
+    setOpenId('');
+  }, [filter, search]);
+
+  const headline = search.trim() ? '검색 결과' : filter === '전체' ? '많이 찾는 질문' : filter;
 
   return (
-    <div className="mobile-shell">
-      <header className="mobile-header">
-        <div className="brand-row">
-          <div>
-            <p className="eyebrow">생활 FAQ</p>
-            <h1>모든질문</h1>
-          </div>
-          <div className="total-pill">{seedFaqTotal.toLocaleString('ko-KR')}</div>
-        </div>
-        <div className="search-wrap">
-          <Search size={19} aria-hidden="true" />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="궁금한 내용을 검색하세요" />
-        </div>
+    <div className="app-shell">
+      <header className="top-area">
+        <h1>모든질문</h1>
+        <label className="search-box">
+          <Search size={18} aria-hidden="true" />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="궁금한 내용을 입력하세요" />
+        </label>
       </header>
 
-      <nav className="category-rail" aria-label="카테고리">
+      <nav className="filter-bar" aria-label="카테고리 선택">
         {filters.map((item) => (
-          <button key={item} type="button" className={filter === item ? 'category-chip active' : 'category-chip'} onClick={() => setFilter(item)}>
+          <button key={item} type="button" className={filter === item ? 'filter-chip active' : 'filter-chip'} onClick={() => setFilter(item)}>
             {item}
           </button>
         ))}
       </nav>
 
-      <main className="faq-page">
-        <section className="result-summary">
-          <strong>{filter}</strong>
-          <span>{filtered.length.toLocaleString('ko-KR')}개</span>
-        </section>
+      <main className="content-area">
+        <h2>{headline}</h2>
 
-        <section className="faq-stack">
-          {visible.map((item) => {
-            const open = openId === item.id;
-            return (
-              <article key={item.id} className={open ? 'faq-item open' : 'faq-item'}>
-                <button type="button" className="faq-trigger" onClick={() => setOpenId(open ? '' : item.id)} aria-expanded={open}>
-                  <span className="faq-meta">{item.category}</span>
-                  <span className="faq-title">{item.title}</span>
-                  <span className="faq-summary">{item.summary}</span>
-                  <ChevronDown className="faq-chevron" size={22} aria-hidden="true" />
-                </button>
-                {open && <div className="faq-answer"><BodyText text={item.body} /></div>}
-              </article>
-            );
-          })}
-        </section>
-
-        {visibleCount < filtered.length && (
-          <button type="button" className="load-more" onClick={() => setVisibleCount((count) => count + PAGE_SIZE)}>더 보기</button>
+        {items.length === 0 ? (
+          <div className="empty-card">검색 결과가 없습니다.</div>
+        ) : (
+          <section className="question-list">
+            {items.map((item) => {
+              const open = openId === item.id;
+              return (
+                <article key={item.id} className={open ? 'question-card open' : 'question-card'}>
+                  <button type="button" className="question-button" onClick={() => setOpenId(open ? '' : item.id)} aria-expanded={open}>
+                    <span className="category-name">{item.category}</span>
+                    <span className="question-title">{item.title}</span>
+                    <ChevronDown className="question-icon" size={20} aria-hidden="true" />
+                  </button>
+                  {open && <div className="answer-panel"><BodyText text={item.body} /></div>}
+                </article>
+              );
+            })}
+          </section>
         )}
       </main>
     </div>
