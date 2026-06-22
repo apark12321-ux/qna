@@ -1,3 +1,4 @@
+import './site-structure.css';
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, Search } from 'lucide-react';
 import { faqArticles, faqCategories, type FaqCategory } from './data/faqSeed';
@@ -51,21 +52,13 @@ function Answer({ text }: { text: string }) {
 }
 
 function RelatedPosts({ item, onOpen }: { item: Article; onOpen: (next: Article) => void }) {
-  const related = faqArticles
-    .filter((candidate) => candidate.category === item.category && candidate.id !== item.id)
-    .slice(0, 4);
-
+  const related = faqArticles.filter((candidate) => candidate.category === item.category && candidate.id !== item.id).slice(0, 4);
   if (related.length === 0) return null;
-
   return (
     <div className="related-box">
       <h3>관련 질문</h3>
       <div className="related-list">
-        {related.map((next) => (
-          <button key={next.id} type="button" onClick={() => onOpen(next)}>
-            {next.title}
-          </button>
-        ))}
+        {related.map((next) => <button key={next.id} type="button" onClick={() => onOpen(next)}>{next.title}</button>)}
       </div>
     </div>
   );
@@ -81,35 +74,21 @@ export default function AppMobileFixed() {
     const keyword = search.trim().toLowerCase();
     const homeItems = faqCategories.flatMap((category) => faqArticles.filter((item) => item.category === category).slice(0, HOME_PER_CATEGORY));
     const source = keyword || filter !== '전체' ? faqArticles : homeItems;
-
-    return source
-      .filter((item) => {
-        const categoryOk = filter === '전체' || item.category === filter;
-        const haystack = `${item.title} ${item.summary} ${item.category} ${item.body}`.toLowerCase();
-        return categoryOk && (!keyword || haystack.includes(keyword));
-      })
-      .slice(0, MAX_RESULTS);
+    return source.filter((item) => {
+      const categoryOk = filter === '전체' || item.category === filter;
+      const haystack = `${item.title} ${item.summary} ${item.category} ${item.body}`.toLowerCase();
+      return categoryOk && (!keyword || haystack.includes(keyword));
+    }).slice(0, MAX_RESULTS);
   }, [filter, search]);
 
   const popularItems = useMemo(() => faqCategories.map((category) => faqArticles.find((item) => item.category === category)).filter(Boolean) as Article[], []);
-
   useEffect(() => setOpenId(''), [filter, search]);
 
   const headline = search.trim() ? '검색 결과' : filter === '전체' ? '자주 찾는 생활 질문' : filter;
   const page = view === 'home' ? null : pages[view];
-
   const moveHome = () => setView('home');
-  const chooseFilter = (next: Filter) => {
-    setFilter(next);
-    setSearch('');
-    setView('home');
-  };
-  const openArticle = (item: Article) => {
-    setFilter(item.category);
-    setSearch('');
-    setView('home');
-    setOpenId(item.id);
-  };
+  const chooseFilter = (next: Filter) => { setFilter(next); setSearch(''); setView('home'); };
+  const openArticle = (item: Article) => { setFilter(item.category); setSearch(''); setView('home'); setOpenId(item.id); };
 
   return (
     <div className="app-shell">
@@ -124,33 +103,19 @@ export default function AppMobileFixed() {
         </div>
         <label className="search-box">
           <Search size={18} aria-hidden="true" />
-          <input
-            value={search}
-            onChange={(event) => {
-              setSearch(event.target.value);
-              setView('home');
-            }}
-            placeholder="궁금한 내용을 입력하세요"
-          />
+          <input value={search} onChange={(event) => { setSearch(event.target.value); setView('home'); }} placeholder="궁금한 내용을 입력하세요" />
         </label>
       </header>
 
       {view === 'home' ? (
         <>
           <nav className="filter-bar" aria-label="카테고리 선택">
-            {filters.map((item) => (
-              <button key={item} type="button" className={filter === item ? 'filter-chip active' : 'filter-chip'} onClick={() => chooseFilter(item)}>
-                {item}
-              </button>
-            ))}
+            {filters.map((item) => <button key={item} type="button" className={filter === item ? 'filter-chip active' : 'filter-chip'} onClick={() => chooseFilter(item)}>{item}</button>)}
           </nav>
-
           <div className="content-layout">
             <main className="content-area">
               <h1>{headline}</h1>
-              {items.length === 0 ? (
-                <div className="empty-card">검색 결과가 없습니다.</div>
-              ) : (
+              {items.length === 0 ? <div className="empty-card">검색 결과가 없습니다.</div> : (
                 <section className="question-list" aria-label="질문 목록">
                   {items.map((item) => {
                     const open = openId === item.id;
@@ -161,46 +126,21 @@ export default function AppMobileFixed() {
                           <span className="question-title">{item.title}</span>
                           <ChevronDown className="question-icon" size={20} aria-hidden="true" />
                         </button>
-                        {open && (
-                          <div className="answer-panel">
-                            <Answer text={item.body} />
-                            <RelatedPosts item={item} onOpen={openArticle} />
-                          </div>
-                        )}
+                        {open && <div className="answer-panel"><Answer text={item.body} /><RelatedPosts item={item} onOpen={openArticle} /></div>}
                       </article>
                     );
                   })}
                 </section>
               )}
             </main>
-
             <aside className="side-panel" aria-label="빠른 이동">
-              <section>
-                <h2>카테고리</h2>
-                <div className="side-link-list">
-                  {faqCategories.slice(0, 8).map((category) => (
-                    <button key={category} type="button" onClick={() => chooseFilter(category)}>{category}</button>
-                  ))}
-                </div>
-              </section>
-              <section>
-                <h2>많이 찾는 질문</h2>
-                <div className="side-link-list compact">
-                  {popularItems.slice(0, 5).map((item) => (
-                    <button key={item.id} type="button" onClick={() => openArticle(item)}>{item.title}</button>
-                  ))}
-                </div>
-              </section>
+              <section><h2>카테고리</h2><div className="side-link-list">{faqCategories.slice(0, 8).map((category) => <button key={category} type="button" onClick={() => chooseFilter(category)}>{category}</button>)}</div></section>
+              <section><h2>많이 찾는 질문</h2><div className="side-link-list compact">{popularItems.slice(0, 5).map((item) => <button key={item.id} type="button" onClick={() => openArticle(item)}>{item.title}</button>)}</div></section>
             </aside>
           </div>
         </>
       ) : (
-        <main className="content-area single-page">
-          <article className="info-page">
-            <h1>{page?.title}</h1>
-            {page?.text.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
-          </article>
-        </main>
+        <main className="content-area single-page"><article className="info-page"><h1>{page?.title}</h1>{page?.text.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}</article></main>
       )}
 
       <footer className="site-footer">
