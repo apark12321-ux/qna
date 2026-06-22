@@ -4,9 +4,11 @@ import { faqArticles, faqCategories, type FaqCategory } from './data/faqSeed';
 
 type Filter = '전체' | FaqCategory;
 type View = 'home' | 'about' | 'privacy' | 'contact';
+type Article = (typeof faqArticles)[number];
+
 const filters: Filter[] = ['전체', ...faqCategories];
 const HOME_PER_CATEGORY = 1;
-const MAX_RESULTS = 24;
+const MAX_RESULTS = 36;
 
 const pages = {
   about: {
@@ -40,9 +42,31 @@ function Answer({ text }: { text: string }) {
     <div className="answer-body">
       {text.split('\n').map((line, index) => {
         if (line.startsWith('# ')) return <h2 key={index}>{line.slice(2)}</h2>;
+        if (line.startsWith('## ')) return <h3 key={index}>{line.slice(3)}</h3>;
         if (!line.trim()) return <div key={index} className="answer-gap" />;
         return <p key={index}>{line}</p>;
       })}
+    </div>
+  );
+}
+
+function RelatedPosts({ item, onOpen }: { item: Article; onOpen: (next: Article) => void }) {
+  const related = faqArticles
+    .filter((candidate) => candidate.category === item.category && candidate.id !== item.id)
+    .slice(0, 4);
+
+  if (related.length === 0) return null;
+
+  return (
+    <div className="related-box">
+      <h3>관련 질문</h3>
+      <div className="related-list">
+        {related.map((next) => (
+          <button key={next.id} type="button" onClick={() => onOpen(next)}>
+            {next.title}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -67,15 +91,37 @@ export default function AppMobileFixed() {
       .slice(0, MAX_RESULTS);
   }, [filter, search]);
 
+  const popularItems = useMemo(() => faqCategories.map((category) => faqArticles.find((item) => item.category === category)).filter(Boolean) as Article[], []);
+
   useEffect(() => setOpenId(''), [filter, search]);
 
-  const headline = search.trim() ? '검색 결과' : filter === '전체' ? '많이 찾는 질문' : filter;
+  const headline = search.trim() ? '검색 결과' : filter === '전체' ? '자주 찾는 생활 질문' : filter;
   const page = view === 'home' ? null : pages[view];
+
+  const moveHome = () => setView('home');
+  const chooseFilter = (next: Filter) => {
+    setFilter(next);
+    setSearch('');
+    setView('home');
+  };
+  const openArticle = (item: Article) => {
+    setFilter(item.category);
+    setSearch('');
+    setView('home');
+    setOpenId(item.id);
+  };
 
   return (
     <div className="app-shell">
       <header className="top-area">
-        <button type="button" className="site-title" onClick={() => setView('home')} aria-label="홈으로 이동">생활정보 Q&A</button>
+        <div className="brand-row">
+          <button type="button" className="site-title" onClick={moveHome} aria-label="홈으로 이동">생활정보 Q&A</button>
+          <nav className="top-nav" aria-label="주요 메뉴">
+            <button type="button" onClick={moveHome}>홈</button>
+            <button type="button" onClick={() => setView('about')}>소개</button>
+            <button type="button" onClick={() => setView('contact')}>문의</button>
+          </nav>
+        </div>
         <label className="search-box">
           <Search size={18} aria-hidden="true" />
           <input
@@ -93,39 +139,65 @@ export default function AppMobileFixed() {
         <>
           <nav className="filter-bar" aria-label="카테고리 선택">
             {filters.map((item) => (
-              <button key={item} type="button" className={filter === item ? 'filter-chip active' : 'filter-chip'} onClick={() => setFilter(item)}>
+              <button key={item} type="button" className={filter === item ? 'filter-chip active' : 'filter-chip'} onClick={() => chooseFilter(item)}>
                 {item}
               </button>
             ))}
           </nav>
 
-          <main className="content-area">
-            <h2>{headline}</h2>
-            {items.length === 0 ? (
-              <div className="empty-card">검색 결과가 없습니다.</div>
-            ) : (
-              <section className="question-list">
-                {items.map((item) => {
-                  const open = openId === item.id;
-                  return (
-                    <article key={item.id} className={open ? 'question-card open' : 'question-card'}>
-                      <button type="button" className="question-button" onClick={() => setOpenId(open ? '' : item.id)} aria-expanded={open}>
-                        <span className="category-name">{item.category}</span>
-                        <span className="question-title">{item.title}</span>
-                        <ChevronDown className="question-icon" size={20} aria-hidden="true" />
-                      </button>
-                      {open && <div className="answer-panel"><Answer text={item.body} /></div>}
-                    </article>
-                  );
-                })}
+          <div className="content-layout">
+            <main className="content-area">
+              <h1>{headline}</h1>
+              {items.length === 0 ? (
+                <div className="empty-card">검색 결과가 없습니다.</div>
+              ) : (
+                <section className="question-list" aria-label="질문 목록">
+                  {items.map((item) => {
+                    const open = openId === item.id;
+                    return (
+                      <article key={item.id} className={open ? 'question-card open' : 'question-card'}>
+                        <button type="button" className="question-button" onClick={() => setOpenId(open ? '' : item.id)} aria-expanded={open}>
+                          <span className="category-name">{item.category}</span>
+                          <span className="question-title">{item.title}</span>
+                          <ChevronDown className="question-icon" size={20} aria-hidden="true" />
+                        </button>
+                        {open && (
+                          <div className="answer-panel">
+                            <Answer text={item.body} />
+                            <RelatedPosts item={item} onOpen={openArticle} />
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
+                </section>
+              )}
+            </main>
+
+            <aside className="side-panel" aria-label="빠른 이동">
+              <section>
+                <h2>카테고리</h2>
+                <div className="side-link-list">
+                  {faqCategories.slice(0, 8).map((category) => (
+                    <button key={category} type="button" onClick={() => chooseFilter(category)}>{category}</button>
+                  ))}
+                </div>
               </section>
-            )}
-          </main>
+              <section>
+                <h2>많이 찾는 질문</h2>
+                <div className="side-link-list compact">
+                  {popularItems.slice(0, 5).map((item) => (
+                    <button key={item.id} type="button" onClick={() => openArticle(item)}>{item.title}</button>
+                  ))}
+                </div>
+              </section>
+            </aside>
+          </div>
         </>
       ) : (
-        <main className="content-area">
+        <main className="content-area single-page">
           <article className="info-page">
-            <h2>{page?.title}</h2>
+            <h1>{page?.title}</h1>
             {page?.text.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
           </article>
         </main>
